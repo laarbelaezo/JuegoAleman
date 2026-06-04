@@ -10,14 +10,18 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class Jugador(pygame.sprite.Sprite):
-    def __init__(self, x, y, imagen_path):
+    def __init__(self, x, y, img_data):
         super().__init__()
-        try:
-            self.image = pygame.image.load(resource_path(imagen_path)).convert_alpha()
-            self.image = pygame.transform.scale(self.image, (40, 60))
-        except:
-            self.image = pygame.Surface((40, 60))
-            self.image.fill((255, 0, 0))
+        if isinstance(img_data, pygame.Surface):
+            self.image = pygame.transform.scale(img_data, (40, 60))
+        else:
+            try:
+                self.image = pygame.image.load(resource_path(img_data)).convert_alpha()
+                self.image = pygame.transform.scale(self.image, (40, 60))
+            except:
+                self.image = pygame.Surface((40, 60))
+                self.image.fill((255, 0, 0))
+        
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -31,16 +35,13 @@ class Jugador(pygame.sprite.Sprite):
         moviendo = False
         if keys[pygame.K_LEFT]: self.rect.x -= 7; moviendo = True
         if keys[pygame.K_RIGHT]: self.rect.x += 7; moviendo = True
-            
         if moviendo and self.en_suelo and sonidos and not sonidos['walk'].get_num_channels():
             sonidos['walk'].play()
-        
         if keys[pygame.K_UP]: self.saltar(sonidos['jump'] if sonidos else None)
 
         self.vel_y += self.gravedad
         self.rect.y += int(self.vel_y)
         self.en_suelo = False
-        
         hits = pygame.sprite.spritecollide(self, plataformas, False)
         for hit in hits:
             if self.vel_y > 0:
