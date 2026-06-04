@@ -26,7 +26,7 @@ reloj = pygame.time.Clock()
 fuente = pygame.font.SysFont("Arial", 28)
 fuente_grande = pygame.font.SysFont("Arial", 80, bold=True)
 
-# Inserta aquí tus 100 preguntas
+# Banco de preguntas
 banco_preguntas = [
     {"q": "Wie sagt man „Hola“?", "o": ["Hallo", "Tschüss", "Bitte"], "a": "a"},
     {"q": "Wie sagt man „Adiós“?", "o": ["Auf Wiedersehen", "Danke", "Ja"], "a": "a"},
