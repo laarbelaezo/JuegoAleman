@@ -2,12 +2,37 @@ import pygame
 import random
 import sys
 import os
+import cv2
 from player import Jugador, Plataforma, Moneda
 
 def resource_path(relative_path):
     try: base_path = sys._MEIPASS
     except Exception: base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def capturar_foto():
+    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if not cam.isOpened(): return None
+    capturando = True
+    frame_final = None
+    while capturando:
+        ret, frame = cam.read()
+        if not ret: break
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        surf = pygame.surfarray.make_surface(frame)
+        surf = pygame.transform.rotate(surf, -90)
+        surf = pygame.transform.flip(surf, True, False)
+        pantalla.fill((0,0,0))
+        pantalla.blit(pygame.transform.scale(surf, (640, 480)), (160, 30))
+        pantalla.blit(fuente.render("LEERTASTE (Espacio) zum Foto!", True, (255,255,255)), (250, 500))
+        pygame.display.flip()
+        for evento in pygame.event.get():
+            if evento.type == pygame.KEYDOWN and evento.key == pygame.K_SPACE:
+                frame_final = surf
+                capturando = False
+        cv2.waitKey(1)
+    cam.release()
+    return frame_final
 
 pygame.init()
 pygame.mixer.init()
@@ -26,7 +51,6 @@ reloj = pygame.time.Clock()
 fuente = pygame.font.SysFont("Arial", 28)
 fuente_grande = pygame.font.SysFont("Arial", 80, bold=True)
 
-# Banco de preguntas
 banco_preguntas = [
     {"q": "Wie sagt man „Hola“?", "o": ["Hallo", "Tschüss", "Bitte"], "a": "a"},
     {"q": "Wie sagt man „Adiós“?", "o": ["Auf Wiedersehen", "Danke", "Ja"], "a": "a"},
@@ -136,107 +160,114 @@ try:
     fondo = pygame.transform.scale(fondo_img, (ANCHO_PANTALLA, ALTO_PANTALLA))
 except: pass
 
-def reiniciar_juego():
+def reiniciar_juego(img_data):
     global plataformas, monedas, ultima_plataforma_x, contador_plataformas, score, indice_quiz, es_campeon, lista_quiz, sonido_go_disparado, teclado_buffer
-    plataformas = pygame.sprite.Group()
-    monedas = pygame.sprite.Group()
+    plataformas = pygame.sprite.Group(); monedas = pygame.sprite.Group()
     plataformas.add(Plataforma(0, 500, 1000, 50, "piso.png"))
-    ultima_plataforma_x = 1000
-    contador_plataformas = 0
-    score = 0
-    indice_quiz = 0
-    es_campeon = False
-    sonido_go_disparado = False
-    teclado_buffer = ""
-    lista_quiz = random.sample(banco_preguntas, 10)
-    return Jugador(100, 100, "jugador.png"), 0
+    ultima_plataforma_x = 1000; contador_plataformas = 0; score = 0; indice_quiz = 0
+    es_campeon = False; sonido_go_disparado = False; teclado_buffer = ""
+    n = min(len(banco_preguntas), 10)
+    lista_quiz = random.sample(banco_preguntas, n)
+    return Jugador(100, 100, img_data), 0
 
-jugador, camara_x = reiniciar_juego()
+estado = "MENU_INICIAL"
+jugador = None
+camara_x = 0
 pausado = estado_quiz = es_campeon = False
 corriendo = True
 teclado_buffer = ""
+error_camara = False
 
 while corriendo:
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT: corriendo = False
-        if evento.type == pygame.KEYDOWN:
-            teclado_buffer += pygame.key.name(evento.key)
-            if "merequetengue" in teclado_buffer.lower(): es_campeon = True
-            
-            if not jugador.game_over and not es_campeon and not estado_quiz:
-                if evento.key == pygame.K_RETURN: pausado = not pausado
-            
-            if estado_quiz:
-                sel = None
-                if evento.key == pygame.K_a: sel = "a"
-                elif evento.key == pygame.K_b: sel = "b"
-                elif evento.key == pygame.K_c: sel = "c"
-                if sel:
-                    if sel == lista_quiz[indice_quiz]["a"]:
-                        score += 1
-                        indice_quiz += 1
-                        if indice_quiz >= 10: es_campeon = True
-                    else: jugador.game_over = True
-                    estado_quiz = False
-            
-            if pausado:
-                if evento.key == pygame.K_w: pausado = False
-                if evento.key == pygame.K_r: jugador, camara_x = reiniciar_juego()
-                if evento.key == pygame.K_a: corriendo = False
-            
-            if jugador.game_over or es_campeon:
-                if evento.key == pygame.K_r: jugador, camara_x = reiniciar_juego()
-                if evento.key == pygame.K_a: corriendo = False
+    if estado == "MENU_INICIAL":
+        pantalla.fill((0,0,0))
+        pantalla.blit(fuente_grande.render("START", True, (255,255,255)), (350, 100))
+        pantalla.blit(fuente.render("[K]amera   [S]prite", True, (255,255,255)), (350, 300))
+        if error_camara: pantalla.blit(fuente.render("Kamera nicht gefunden! Bitte [S] drücken.", True, (255,0,0)), (200, 400))
+        pygame.display.flip()
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT: corriendo = False
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_k:
+                    img = capturar_foto()
+                    if img: jugador, camara_x = reiniciar_juego(img); estado = "JUGANDO"
+                    else: error_camara = True
+                if evento.key == pygame.K_s:
+                    jugador, camara_x = reiniciar_juego("jugador.png"); estado = "JUGANDO"
+        continue
 
-    if not pausado and not jugador.game_over and not estado_quiz and not es_campeon:
-        jugador.update(plataformas, sonidos)
-        if jugador.game_over and not sonido_go_disparado:
-            if sonidos: sonidos['gameover'].play()
-            sonido_go_disparado = True
-            
-        if ultima_plataforma_x < jugador.rect.x + 1000:
-            p_ancho = random.randint(80, 180)
-            p_x = ultima_plataforma_x + random.randint(80, 200)
-            plataformas.add(Plataforma(p_x, random.randint(300, 450), p_ancho, 20, "bloque.png"))
-            contador_plataformas += 1
-            if contador_plataformas % 5 == 0 and indice_quiz < 10:
-                monedas.add(Moneda(p_x + p_ancho // 2 - 15, 300))
-            ultima_plataforma_x = p_x + p_ancho
+    if estado == "JUGANDO":
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT: corriendo = False
+            if evento.type == pygame.KEYDOWN:
+                teclado_buffer += pygame.key.name(evento.key)
+                if "merequetengue" in teclado_buffer.lower(): es_campeon = True
+                if not jugador.game_over and not es_campeon and not estado_quiz:
+                    if evento.key == pygame.K_RETURN: pausado = not pausado
+                if estado_quiz:
+                    sel = None
+                    if evento.key == pygame.K_a: sel = "a"
+                    elif evento.key == pygame.K_b: sel = "b"
+                    elif evento.key == pygame.K_c: sel = "c"
+                    if sel:
+                        if sel == lista_quiz[indice_quiz]["a"]:
+                            score += 1; indice_quiz += 1
+                            if indice_quiz >= len(lista_quiz): es_campeon = True
+                        else: jugador.game_over = True
+                        estado_quiz = False
+                if pausado:
+                    if evento.key == pygame.K_w: pausado = False
+                    if evento.key == pygame.K_r: estado = "MENU_INICIAL"
+                    if evento.key == pygame.K_a: corriendo = False
+                if jugador.game_over or es_campeon:
+                    if evento.key == pygame.K_r: estado = "MENU_INICIAL"
+                    if evento.key == pygame.K_a: corriendo = False
+
+        if not pausado and not jugador.game_over and not estado_quiz and not es_campeon:
+            jugador.update(plataformas, sonidos)
+            if jugador.game_over and not sonido_go_disparado:
+                if sonidos: sonidos['gameover'].play()
+                sonido_go_disparado = True
+            if ultima_plataforma_x < jugador.rect.x + 1000:
+                p_ancho = random.randint(80, 180)
+                p_x = ultima_plataforma_x + random.randint(80, 200)
+                plataformas.add(Plataforma(p_x, random.randint(300, 450), p_ancho, 20, "bloque.png"))
+                contador_plataformas += 1
+                if contador_plataformas % 5 == 0 and indice_quiz < len(lista_quiz): monedas.add(Moneda(p_x + p_ancho // 2 - 15, 300))
+                ultima_plataforma_x = p_x + p_ancho
+            if pygame.sprite.spritecollide(jugador, monedas, True): estado_quiz = True
+            if jugador.rect.x > ANCHO_PANTALLA // 2: camara_x = jugador.rect.x - ANCHO_PANTALLA // 2
         
-        if pygame.sprite.spritecollide(jugador, monedas, True): estado_quiz = True
-        if jugador.rect.x > ANCHO_PANTALLA // 2: camara_x = jugador.rect.x - ANCHO_PANTALLA // 2
-    
-    pantalla.blit(fondo, (0, 0))
-    for p in plataformas: pantalla.blit(p.image, (p.rect.x - camara_x, p.rect.y))
-    for m in monedas: pantalla.blit(m.image, (m.rect.x - camara_x, m.rect.y))
-    pantalla.blit(jugador.image, (jugador.rect.x - camara_x, jugador.rect.y))
-    pantalla.blit(fuente.render(f"Punkte: {score}/10", True, (255, 255, 255)), (800, 20))
+        pantalla.blit(fondo, (0, 0))
+        for p in plataformas: pantalla.blit(p.image, (p.rect.x - camara_x, p.rect.y))
+        for m in monedas: pantalla.blit(m.image, (m.rect.x - camara_x, m.rect.y))
+        pantalla.blit(jugador.image, (jugador.rect.x - camara_x, jugador.rect.y))
+        pantalla.blit(fuente.render(f"Punkte: {score}/10", True, (255, 255, 255)), (800, 20))
 
-    if es_campeon:
-        pantalla.blit(pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA), pygame.SRCALPHA), (0,0)) # Overlay
-        overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(180); overlay.fill((255, 215, 0))
-        pantalla.blit(overlay, (0,0))
-        txt_c = fuente_grande.render("CHAMPION", True, (255, 255, 255))
-        pantalla.blit(txt_c, (ANCHO_PANTALLA//2 - txt_c.get_width()//2, 150))
-        pantalla.blit(fuente.render("[R]estart, [A]us", True, (255, 255, 255)), (350, 400))
-    elif jugador.game_over:
-        overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(180); overlay.fill((150, 0, 0))
-        pantalla.blit(overlay, (0,0))
-        txt_g = fuente_grande.render("GAME OVER", True, (255, 255, 255))
-        pantalla.blit(txt_g, (ANCHO_PANTALLA//2 - txt_g.get_width()//2, 150))
-        pantalla.blit(fuente.render(f"Punkte: {score}/10", True, (255, 255, 255)), (380, 250))
-        pantalla.blit(fuente.render("[R]estart, [A]us", True, (255, 255, 255)), (350, 400))
-    elif estado_quiz:
-        overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(150); overlay.fill((0, 100, 0))
-        pantalla.blit(overlay, (0,0))
-        q = lista_quiz[indice_quiz]
-        pantalla.blit(fuente.render(q["q"], True, (255, 255, 255)), (100, 150))
-        pantalla.blit(fuente.render(f"a) {q['o'][0]}", True, (255, 255, 255)), (100, 200))
-        pantalla.blit(fuente.render(f"b) {q['o'][1]}", True, (255, 255, 255)), (100, 240))
-        pantalla.blit(fuente.render(f"c) {q['o'][2]}", True, (255, 255, 255)), (100, 280))
-    elif pausado:
-        pantalla.blit(fuente.render("PAUSE - [W]eiter, [R]estart, [A]us", True, (255, 255, 255)), (250, 250))
+        if es_campeon:
+            overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(180); overlay.fill((255, 215, 0))
+            pantalla.blit(overlay, (0,0))
+            txt_c = fuente_grande.render("CHAMPION", True, (255, 255, 255))
+            pantalla.blit(txt_c, (ANCHO_PANTALLA//2 - txt_c.get_width()//2, 150))
+            pantalla.blit(fuente.render("[R]estart, [A]us", True, (255, 255, 255)), (350, 400))
+        elif jugador.game_over:
+            overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(180); overlay.fill((150, 0, 0))
+            pantalla.blit(overlay, (0,0))
+            txt_g = fuente_grande.render("GAME OVER", True, (255, 255, 255))
+            pantalla.blit(txt_g, (ANCHO_PANTALLA//2 - txt_g.get_width()//2, 150))
+            pantalla.blit(fuente.render(f"Punkte: {score}/10", True, (255, 255, 255)), (380, 250))
+            pantalla.blit(fuente.render("[R]estart, [A]us", True, (255, 255, 255)), (350, 400))
+        elif estado_quiz:
+            overlay = pygame.Surface((ANCHO_PANTALLA, ALTO_PANTALLA)); overlay.set_alpha(150); overlay.fill((0, 100, 0))
+            pantalla.blit(overlay, (0,0))
+            q = lista_quiz[indice_quiz]
+            pantalla.blit(fuente.render(q["q"], True, (255, 255, 255)), (100, 150))
+            pantalla.blit(fuente.render(f"a) {q['o'][0]}", True, (255, 255, 255)), (100, 200))
+            pantalla.blit(fuente.render(f"b) {q['o'][1]}", True, (255, 255, 255)), (100, 240))
+            pantalla.blit(fuente.render(f"c) {q['o'][2]}", True, (255, 255, 255)), (100, 280))
+        elif pausado:
+            pantalla.blit(fuente.render("PAUSE - [W]eiter, [R]estart, [A]us", True, (255, 255, 255)), (250, 250))
     
-    pygame.display.flip()
     reloj.tick(60)
+    pygame.display.flip()
 pygame.quit()
